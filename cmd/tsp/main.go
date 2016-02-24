@@ -104,11 +104,12 @@ func main() {
 	}
 
 	options := serial.OpenOptions{
-		PortName:   opts.PortName,
-		BaudRate:   opts.BaudRate,
-		DataBits:   opts.DataBits,
-		ParityMode: parityMode,
-		StopBits:   opts.StopBits,
+		PortName:              opts.PortName,
+		BaudRate:              opts.BaudRate,
+		DataBits:              opts.DataBits,
+		ParityMode:            parityMode,
+		StopBits:              opts.StopBits,
+		InterCharacterTimeout: 1000,
 	}
 
 	port, err := serial.Open(options)
