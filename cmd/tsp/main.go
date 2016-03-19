@@ -104,11 +104,12 @@ func main() {
 	}
 
 	options := serial.OpenOptions{
-		PortName:   opts.PortName,
-		BaudRate:   opts.BaudRate,
-		DataBits:   opts.DataBits,
-		ParityMode: parityMode,
-		StopBits:   opts.StopBits,
+		PortName:              opts.PortName,
+		BaudRate:              opts.BaudRate,
+		DataBits:              opts.DataBits,
+		ParityMode:            parityMode,
+		StopBits:              opts.StopBits,
+		InterCharacterTimeout: 1000,
 	}
 
 	port, err := serial.Open(options)
@@ -122,42 +123,56 @@ func main() {
 	}
 	defer termui.Close()
 
+	qreq := make(chan bool)
+	qack := make(chan bool)
+
 	termui.Handle("/sys/kbd/q", func(termui.Event) {
-		termui.StopLoop()
+		qreq <- true
 	})
 
 	// Rx Handler
 	data := make([]float64, 0)
 	var strbuf string
-	go func() {
+	go func(_qreq chan bool) {
 		buf := make([]byte, 128)
 		for {
-			n, err := port.Read(buf)
-			if err != nil {
-				panic(err)
-			}
-			if n > 0 {
-				// Allocate extra data size.
-				// Because data will be truncated at draw function.
-				displen := termui.TermWidth()
-				if opts.LineMode == "braille" {
-					displen *= 2
+			select {
+			case <-_qreq:
+				qack <- true
+				break
+			default:
+				n, err := port.Read(buf)
+				if err != nil {
+					panic(err)
 				}
-				strbuf = strbuf + string(buf[:n])
-				strval := strings.Split(strbuf, opts.Delimiter)
-				for i := 0; i < len(strval)-1; i++ {
-					val, err := strconv.ParseFloat(strval[i], 64)
-					if err == nil {
-						if len(data) >= displen {
-							data = data[1:]
-						}
-						data = append(data, val)
+				if n > 0 {
+					// Allocate extra data size.
+					// Because data will be truncated at draw function.
+					displen := termui.TermWidth()
+					if opts.LineMode == "braille" {
+						displen *= 2
 					}
+					strbuf = strbuf + string(buf[:n])
+					strval := strings.Split(strbuf, opts.Delimiter)
+					for i := 0; i < len(strval)-1; i++ {
+						val, err := strconv.ParseFloat(strval[i], 64)
+						if err == nil {
+							if len(data) >= displen {
+								data = data[1:]
+							}
+							data = append(data, val)
+						}
+					}
+					draw(data)
+					strbuf = strval[len(strval)-1]
 				}
-				draw(data)
-				strbuf = strval[len(strval)-1]
 			}
 		}
+	}(qreq)
+
+	go func() {
+		<-qack
+		termui.StopLoop()
 	}()
 
 	draw(data)
